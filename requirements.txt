@@ -1,0 +1,12 @@
+speech_recognition
+pyttsx3
+customtkinter
+ollama
+pyautogui
+pywhatkit
+psutil
+numpy
+Pillow
+sounddevice
+soundfile
+scipy
