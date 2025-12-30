@@ -11,7 +11,11 @@ Features:
 import threading
 import subprocess
 import speech_recognition as sr
-import pyttsx3
+from gtts import gTTS
+import sounddevice as sd
+import soundfile as sf
+import os
+import tempfile
 import customtkinter as ctk
 import ollama
 import pyautogui
@@ -40,31 +44,13 @@ TEXT_COLOR = "#e0e0ff"
 INPUT_COLOR = "#222233"
 
 class VoiceEngine:
-    """Enhanced Voice Engine with Proper State Management"""
+    """Enhanced Voice Engine with gTTS and sounddevice"""
     def __init__(self):
-        self.engine = pyttsx3.init()
         self.is_speaking = False
         self.speech_queue = queue.Queue()
-        self.configure_voice()
         self.start_speech_worker()
-    
-    def configure_voice(self):
-        """Configure voice for JARVIS style"""
-        try:
-            voices = self.engine.getProperty('voices')
-            self.engine.setProperty('rate', 260)  # Fast but clear
-            self.engine.setProperty('volume', 1.0)
-            
-            # Try to find a suitable voice
-            male_voices = ["david", "mark", "microsoft david", "zira"]
-            for v in voices:
-                if any(mv in v.name.lower() for mv in male_voices):
-                    self.engine.setProperty('voice', v.id)
-                    break
-                    
-        except Exception as e:
-            print(f"Voice config error: {e}")
-    
+        self.temp_audio_file = None
+
     def start_speech_worker(self):
         """Background thread for speech synthesis"""
         def worker():
@@ -78,31 +64,42 @@ class VoiceEngine:
                     continue
                 except Exception as e:
                     print(f"Speech worker error: {e}")
-        
+
         threading.Thread(target=worker, daemon=True).start()
-    
+
     def _speak(self, text):
-        """Synchronous speech synthesis"""
+        """Synchronous speech synthesis using gTTS and sounddevice"""
         self.is_speaking = True
         try:
-            self.engine.say(text)
-            self.engine.runAndWait()
+            tts = gTTS(text=text, lang='en', slow=False)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
+                self.temp_audio_file = fp.name
+                tts.save(self.temp_audio_file)
+
+            # Load the audio file and play it
+            data, fs = sf.read(self.temp_audio_file, dtype='float32')
+            sd.play(data, fs)
+            sd.wait()  # Wait for the sound to finish playing
+
         except Exception as e:
             print(f"Speech error: {e}")
         finally:
+            if self.temp_audio_file:
+                try:
+                    os.remove(self.temp_audio_file)
+                    self.temp_audio_file = None
+                except OSError as e:
+                    print(f"Error removing temporary file: {e}")
             self.is_speaking = False
-    
+
     def speak(self, text):
         """Queue text for speech (non-blocking)"""
         if text and not self.is_speaking:
             self.speech_queue.put(text)
-    
+
     def stop(self):
         """Stop all speech"""
-        try:
-            self.engine.stop()
-        except:
-            pass
+        sd.stop()
 
 class CommandProcessor:
     """Handles all command processing with queue system"""
@@ -111,7 +108,7 @@ class CommandProcessor:
         self.command_queue = queue.Queue()
         self.processing = False
         self.current_command = None
-        self.model = "deepseek-r1:1.5b"
+        self.model = "qwen2.5:7b"
         
         # Command patterns
         self.command_patterns = {
