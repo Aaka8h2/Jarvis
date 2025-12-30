@@ -1,5 +1,5 @@
 speech_recognition
-pyttsx3
+gTTS
 customtkinter
 ollama
 pyautogui
